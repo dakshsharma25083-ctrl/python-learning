@@ -5,7 +5,6 @@ A command-line Python application to manage student records using SQLite.
 
 import sqlite3
 #this is testing 
-#git test
 
 # ─────────────────────────────────────────────
 # (a) Database & Table Setup
