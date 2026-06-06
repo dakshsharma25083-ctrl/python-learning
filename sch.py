@@ -1,23 +1,41 @@
-"""
-Student Marks Database Manager
+"""Student Marks Database Manager
 A command-line Python application to manage student records using SQLite.
+
+Fix: `school.db` may already contain a `students` table with a different schema
+(e.g., columns: id, name, age, email, class_no). This script will detect that
+mismatch and recreate the table so the app works consistently.
 """
 
 import sqlite3
-#this is testing 
+
 
 # ─────────────────────────────────────────────
 # (a) Database & Table Setup
 # ─────────────────────────────────────────────
+
 def create_connection(db_file="school.db"):
     """Create and return a connection to the SQLite database."""
     conn = sqlite3.connect(db_file)
-    conn.row_factory = sqlite3.Row          # allows column-name access
+    conn.row_factory = sqlite3.Row  # allows column-name access
     return conn
 
 
 def create_table(conn):
-    """Create the 'students' table if it doesn't already exist."""
+    """Create (or fix) the `students` table schema."""
+
+    # Check if table exists
+    table_exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='students';"
+    ).fetchone()
+
+    required = {"id", "name", "subject", "marks", "grade"}
+
+    if table_exists:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(students);").fetchall()}
+        if not required.issubset(cols):
+            # Schema mismatch -> drop & recreate
+            conn.execute("DROP TABLE IF EXISTS students;")
+
     sql = """
         CREATE TABLE IF NOT EXISTS students (
             id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,7 +53,8 @@ def create_table(conn):
 # ─────────────────────────────────────────────
 # (b) Insert Student with Auto Grade
 # ─────────────────────────────────────────────
-def compute_grade(marks):
+
+def compute_grade(marks: int) -> str:
     """Return the letter grade for a given marks value."""
     if marks >= 90:
         return "A+"
@@ -50,46 +69,38 @@ def compute_grade(marks):
 
 
 def insert_student(conn, name, subject, marks):
-    """
-    Insert a student record.
-    Grade is computed automatically from marks.
-    Returns the new row's id.
-    """
+    """Insert a student record with computed grade."""
     grade = compute_grade(marks)
-    sql   = "INSERT INTO students (name, subject, marks, grade) VALUES (?, ?, ?, ?);"
-    cur   = conn.execute(sql, (name, subject, marks, grade))
+    sql = "INSERT INTO students (name, subject, marks, grade) VALUES (?, ?, ?, ?);"
+    cur = conn.execute(sql, (name, subject, marks, grade))
     conn.commit()
-    print(f"  ➕  Inserted: {name} | {subject} | Marks: {marks} | Grade: {grade}  (id={cur.lastrowid})")
+    print(
+        f"  ➕  Inserted: {name} | {subject} | Marks: {marks} | Grade: {grade}  (id={cur.lastrowid})"
+    )
     return cur.lastrowid
-     
 
 
 # ─────────────────────────────────────────────
 # (c) Top-N Students by Marks
 # ─────────────────────────────────────────────
+
 def get_top_students(conn, n):
-    """
-Return the top-n students sorted by marks descending.
-    Uses SQL ORDER BY … LIMIT.
-    """
+    """Return top-n students sorted by marks descending."""
     sql = """
         SELECT id, name, subject, marks, grade
         FROM   students
         ORDER  BY marks DESC
         LIMIT  ?;
     """
-    rows = conn.execute(sql, (n,)).fetchall()
-    return rows
+    return conn.execute(sql, (n,)).fetchall()
 
 
 # ─────────────────────────────────────────────
 # (d) Average Marks per Subject
 # ─────────────────────────────────────────────
+
 def subject_average(conn):
-    """
-    Return average marks grouped by subject.
-    Result: list of (subject, avg_marks) rows.
-    """
+    """Return average marks grouped by subject."""
     sql = """
         SELECT   subject,
                  ROUND(AVG(marks), 2) AS avg_marks
@@ -97,23 +108,19 @@ def subject_average(conn):
         GROUP BY subject
         ORDER BY avg_marks DESC;
     """
-    rows = conn.execute(sql).fetchall()
-    return rows
+    return conn.execute(sql).fetchall()
 
 
 # ─────────────────────────────────────────────
 # (e) Delete Failed Students
 # ─────────────────────────────────────────────
+
 def delete_failed_students(conn):
-    """
-    Delete every student whose grade is 'F'.
-    Prints how many rows were removed.
-    Returns the deleted row count.
-    """
+    """Delete every student whose grade is 'F'."""
     sql = "DELETE FROM students WHERE grade = 'F';"
     cur = conn.execute(sql)
     conn.commit()
-    count = cur.rowcount          # ← uses cursor.rowcount as required
+    count = cur.rowcount
     print(f"  🗑   Deleted {count} failed student(s) with grade 'F'.")
     return count
 
@@ -121,6 +128,7 @@ def delete_failed_students(conn):
 # ─────────────────────────────────────────────
 # Display Helpers
 # ─────────────────────────────────────────────
+
 def print_students(rows, title="Students"):
     """Pretty-print a list of student rows."""
     print(f"\n{'─'*55}")
@@ -132,7 +140,9 @@ def print_students(rows, title="Students"):
         print(f"  {'ID':<4} {'Name':<18} {'Subject':<12} {'Marks':<7} {'Grade'}")
         print(f"  {'─'*4} {'─'*18} {'─'*12} {'─'*7} {'─'*5}")
         for r in rows:
-            print(f"  {r['id']:<4} {r['name']:<18} {r['subject']:<12} {r['marks']:<7} {r['grade']}")
+            print(
+                f"  {r['id']:<4} {r['name']:<18} {r['subject']:<12} {r['marks']:<7} {r['grade']}"
+            )
     print(f"{'─'*55}\n")
 
 
@@ -152,45 +162,41 @@ def print_averages(rows):
 
 
 # ─────────────────────────────────────────────
-# (f) Main — with try / except / finally
+# (f) Main
 # ─────────────────────────────────────────────
+
 def main():
     conn = None
     try:
-        # ── Setup ──────────────────────────────
         conn = create_connection("school.db")
         create_table(conn)
 
-        # ── Insert sample students ──────────────
         print("Inserting sample students …")
         sample_data = [
-            ("Alice",   "Math",    95),
-            ("Bob",     "Science", 82),
-            ("Charlie", "Math",    73),
-            ("Diana",   "English", 67),
-            ("Eve",     "Science", 55),
-            ("Frank",   "English", 91),
-            ("Grace",   "Math",    48),
-            ("Henry",   "Science", 88),
-            ("Ivy",     "English", 76),
-            ("Jack",    "Math",    60),
+            ("Alice", "Math", 95),
+            ("Bob", "Science", 82),
+            ("Charlie", "Math", 73),
+            ("Diana", "English", 67),
+            ("Eve", "Science", 55),
+            ("Frank", "English", 91),
+            ("Grace", "Math", 48),
+            ("Henry", "Science", 88),
+            ("Ivy", "English", 76),
+            ("Jack", "Math", 60),
         ]
+
         for name, subject, marks in sample_data:
             insert_student(conn, name, subject, marks)
 
-        # ── Top 5 students ──────────────────────
         top5 = get_top_students(conn, 5)
         print_students(top5, title="Top 5 Students by Marks")
 
-        # ── Subject averages ────────────────────
         avgs = subject_average(conn)
         print_averages(avgs)
 
-        # ── Delete failed students ──────────────
         print("Removing students who failed (grade = 'F') …")
         delete_failed_students(conn)
 
-        # ── Confirm deletion ────────────────────
         all_students = conn.execute(
             "SELECT * FROM students ORDER BY marks DESC;"
         ).fetchall()
@@ -203,7 +209,6 @@ def main():
         print(f"\n❌  Unexpected error: {err}")
 
     finally:
-        # ── Always close the connection ─────────
         if conn:
             conn.close()
             print("✔  Database connection closed.")
@@ -211,3 +216,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

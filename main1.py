@@ -4,11 +4,11 @@ import sqlite3
 conn = sqlite3.connect("marksheet.db")
 cur = conn.cursor()
 
-# Create table  h gg    
+# Create table  h gg   
 cur.execute("""
-    CREATE TABLE IF NOT EXISTS students (
+    CREATE TABLE IF NOT EXISTS students ( 
         roll_no INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
+        name TEXT NOT NULL
         english INTEGER,
         math INTEGER,
         science INTEGER,
